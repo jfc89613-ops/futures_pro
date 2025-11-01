@@ -6,7 +6,7 @@ from .client import get_client
 log = logging.getLogger("symbols")
 
 def _fapi_ticker_24hr_raw():
-    cli = get_client().client
+    cli = get_client()
     # Try official method first; fallback to raw endpoint
     for name in ("futures_ticker_24hr", "futures_ticker"):
         if hasattr(cli, name):
@@ -18,13 +18,13 @@ def _fapi_ticker_24hr_raw():
                 log.info(f"{name} failed: {e}")
     # Fallback to low-level request
     try:
-        return cli._request_futures_api('get', 'ticker/24hr')
+        return cli.request_futures_api('get', 'ticker/24hr')
     except Exception as e:
         log.error(f"Fallback 24hr request failed: {e}")
         return []
 
 def _usdt_perpetual_symbols() -> Dict[str, Any]:
-    info = get_client().client.futures_exchange_info()
+    info = get_client().exchange_info()
     out = {}
     for sym in info.get("symbols", []):
         try:

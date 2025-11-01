@@ -15,8 +15,6 @@ from pro_bot.core.execution import (
     enter_position,
     _can_open_new_position,
     refresh_open_positions_cache,
-    has_open_position,
-    open_positions_count,
 )
 
 # ML
@@ -90,13 +88,8 @@ def worker(symbol: str):
         log.info(f"[{symbol}] ML Decision: {decision} p={prob:.3f}")
 
         if decision in ("LONG", "SHORT"):
-            # bloqueos: una por símbolo + máximo global
             if not _can_open_new_position(symbol):
-                log.info(f"[{symbol}] ya tiene posición abierta; no abriré otra.")
-                continue
-            max_open = int(getattr(settings, "max_open_positions", 5))
-            if open_positions_count() >= max_open:
-                log.info(f"[{symbol}] límite global de posiciones ({max_open}) alcanzado; se omite entrada.")
+                log.info(f"[{symbol}] entrada bloqueada por control de riesgo.")
                 continue
             try:
                 log.info(f"[{symbol}] Entering {decision} via LIMIT")

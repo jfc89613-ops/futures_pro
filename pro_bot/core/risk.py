@@ -7,7 +7,7 @@ from .client import get_client
 log = logging.getLogger("risk")
 
 def set_leverage_if_needed(symbol: str, target_leverage: int):
-    cli = get_client().client
+    cli = get_client()
     try:
         cli.futures_change_leverage(symbol=symbol, leverage=target_leverage)
         log.info(f"[{symbol}] leverage set to {target_leverage}")

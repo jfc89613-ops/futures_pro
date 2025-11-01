@@ -12,10 +12,11 @@ from pro_bot.core.ws_multi import start_kline_multiplex
 from pro_bot.core.sl_tp_manager import SLTPManager
 # from pro_bot.core.universe import fetch_top_usdt_perpetuals_by_volume  # No necesario con símbolos fijos
 from pro_bot.core.execution import (
-    has_open_position, 
     open_positions_count,
-    _can_open_new_position
+    _can_open_new_position,
+    get_max_active_positions,
 )
+from pro_bot.core.top_symbols import top_usdtm_by_quote_volume
 
 from pro_ml.core.features.microstructure import build_features
 from pro_ml.core.live.inference_multi import LiveModel
@@ -40,7 +41,7 @@ DF = defaultdict(lambda: pd.DataFrame(columns=['open','high','low','close','volu
 PM = {}
 
 # Restaurar MAX_SYMBOLS para funcionalidad completa
-MAX_SYMBOLS = int(os.getenv("MAX_SYMBOLS", "19"))
+MAX_SYMBOLS = max(1, int(os.getenv("MAX_SYMBOLS", "20")))
 # UNIVERSE_REFRESH_MIN is reserved for future automatic rotation
 
 def _ensure_pm(sym):
@@ -180,7 +181,11 @@ def main():
     
     # Log de posiciones abiertas al inicio (sin cache)
     open_count = open_positions_count()
-    log.info(f"Open positions: {open_count}/5")
+    log.info(
+        "Open positions: %s/%s",
+        open_count,
+        get_max_active_positions(),
+    )
     
     # Usar símbolos fijos del archivo .env
     symbols_env = os.getenv("SYMBOLS", "").strip()
@@ -188,9 +193,28 @@ def main():
         syms = [s.strip() for s in symbols_env.split(",") if s.strip()]
         log.info(f"Using fixed symbols from env: {len(syms)} symbols: {', '.join(syms[:10])}{'...' if len(syms) > 10 else ''}")
     else:
-        # Fallback a una lista básica si no hay SYMBOLS en .env
-        syms = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT"]
-        log.info(f"Using fallback symbols: {len(syms)} symbols")
+        try:
+            syms = top_usdtm_by_quote_volume(n=MAX_SYMBOLS)
+            if len(syms) < MAX_SYMBOLS:
+                log.warning(
+                    "Universe menor al objetivo (%d/%d). Revisar cache/exchange info",
+                    len(syms),
+                    MAX_SYMBOLS,
+                )
+        except Exception as exc:
+            log.error(f"Fallo obteniendo universo dinámico: {exc}. Usando fallback estático")
+            syms = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT"]
+        log.info(f"Universe dinámico cargado: {len(syms)} símbolos")
+
+    syms = syms[:MAX_SYMBOLS]
+
+    max_positions = get_max_active_positions()
+    if max_positions < len(syms):
+        log.warning(
+            "max_open_positions=%d es menor que símbolos seguidos=%d. Ajustar MAX_OPEN_POSITIONS si se requiere plena concurrencia",
+            max_positions,
+            len(syms),
+        )
     
     # WARMUP: Precargar datos históricos para todos los símbolos
     log.info("Starting warmup phase...")

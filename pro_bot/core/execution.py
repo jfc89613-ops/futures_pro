@@ -10,6 +10,23 @@ log = logging.getLogger("exec")
 
 SIDE = {"BUY":"BUY","SELL":"SELL"}
 
+_DEFAULT_MAX_ACTIVE = 20
+
+
+def get_max_active_positions() -> int:
+    """Return the configured cap of simultaneous positions/orders."""
+    candidate = getattr(settings, "max_open_positions", _DEFAULT_MAX_ACTIVE)
+    try:
+        value = int(candidate)
+    except (TypeError, ValueError):
+        log.warning(
+            "Valor inválido para max_open_positions (%s); usando %s",
+            candidate,
+            _DEFAULT_MAX_ACTIVE,
+        )
+        return _DEFAULT_MAX_ACTIVE
+    return value if value > 0 else _DEFAULT_MAX_ACTIVE
+
 def last_price(symbol: str) -> float:
     p = get_client().ticker_price(symbol)
     return float(p["price"])
@@ -18,18 +35,19 @@ def market_order(side: str, symbol: str, qty_str: str, reduce_only: bool = False
     params = dict(symbol=symbol, side=side, type="MARKET", quantity=qty_str, recvWindow=settings.recv_window)
     if reduce_only:
         params["reduceOnly"] = "true"
-    return get_client().client.futures_create_order(**params)
+    return get_client().futures_create_order(**params)
 
-def limit_order(side: str, symbol: str, qty_str: str, price_str: str, tif: str="GTC", reduce_only: bool=False):
+
+def limit_order(side: str, symbol: str, qty_str: str, price_str: str, tif: str = "GTC", reduce_only: bool = False):
     params = dict(symbol=symbol, side=side, type="LIMIT", quantity=qty_str, price=price_str, timeInForce=tif, recvWindow=settings.recv_window)
     if reduce_only:
         params["reduceOnly"] = "true"
-    return get_client().client.futures_create_order(**params)
+    return get_client().futures_create_order(**params)
 
 def place_tp_sl(symbol: str, side_open: str, tp_price: Optional[Decimal], sl_price: Optional[Decimal]):
     """ Coloca TP/SL en MARK_PRICE con pequeño buffer para no disparar inmediato """
     opposite = "SELL" if side_open == "BUY" else "BUY"
-    cli = get_client().client
+    cli = get_client()
     f = get_filters(symbol)
 
     def _safe(px: Optional[Decimal], above: bool) -> Optional[str]:
@@ -68,7 +86,7 @@ def place_tp_sl(symbol: str, side_open: str, tp_price: Optional[Decimal], sl_pri
 def has_open_position(symbol: str) -> bool:
     """Verificar si hay posición abierta consultando Binance directamente"""
     try:
-        position_info = get_client().client.futures_position_information(symbol=symbol)
+        position_info = get_client().futures_position_information(symbol=symbol)
         if position_info:
             amt = Decimal(position_info[0].get("positionAmt", "0"))
             return amt != 0
@@ -81,7 +99,7 @@ def has_open_position(symbol: str) -> bool:
 def get_position_details(symbol: str):
     """Obtener detalles completos de la posición desde Binance"""
     try:
-        position_info = get_client().client.futures_position_information(symbol=symbol)
+        position_info = get_client().futures_position_information(symbol=symbol)
         if position_info:
             pos = position_info[0]
             amt = Decimal(pos.get("positionAmt", "0"))
@@ -101,7 +119,7 @@ def get_position_details(symbol: str):
 def get_all_open_positions():
     """Obtener todas las posiciones abiertas desde Binance API"""
     try:
-        infos = get_client().client.futures_position_information()
+        infos = get_client().futures_position_information()
         open_symbols = []
         
         for p in infos:
@@ -118,7 +136,7 @@ def get_all_open_positions():
 def get_pending_limit_orders():
     """Obtener órdenes LIMIT pendientes desde Binance API"""
     try:
-        orders = get_client().client.futures_get_open_orders()
+        orders = get_client().futures_get_open_orders()
         pending_symbols = []
         
         for order in orders:
@@ -152,7 +170,7 @@ def active_trading_count() -> int:
 def has_pending_limit_order(symbol: str) -> bool:
     """Verificar si hay una orden LIMIT pendiente para un símbolo"""
     try:
-        orders = get_client().client.futures_get_open_orders(symbol=symbol)
+        orders = get_client().futures_get_open_orders(symbol=symbol)
         for order in orders:
             if order.get("type") == "LIMIT" and order.get("status") == "NEW":
                 return True
@@ -165,19 +183,20 @@ def _can_open_new_position(symbol: str) -> bool:
     """Verifica si se puede abrir una nueva posición para el símbolo"""
     # No abrir si ya hay posición en este símbolo
     if has_open_position(symbol):
+        log.info(f"[{symbol}] ya hay posición abierta; se omite nueva entrada.")
         return False
-    
+
     # No abrir si ya hay una orden LIMIT pendiente para este símbolo
     if has_pending_limit_order(symbol):
         log.info(f"[{symbol}] Ya hay orden LIMIT pendiente, no se abre nueva posición")
         return False
-    
+
     # Verificar límite máximo de posiciones abiertas + órdenes pendientes
-    max_positions = 5  # Límite fijo de 5 posiciones/órdenes activas
+    max_positions = get_max_active_positions()
     current_active = active_trading_count()
     open_positions = get_all_open_positions()
     pending_orders = get_pending_limit_orders()
-    
+
     if current_active >= max_positions:
         log.info(f"Límite alcanzado: {current_active}/{max_positions} posiciones/órdenes activas")
         log.info(f"  Posiciones abiertas ({len(open_positions)}): {open_positions}")
@@ -194,18 +213,8 @@ def enter_position(direction: str, use_limit: bool = True, limit_offset_bps: int
     """
     sym = symbol or settings.symbol
 
-        # --- Límite de posiciones activas (abiertas + pendientes) ---
-    MAX_ACTIVE_POSITIONS = 5
-    current_active = active_trading_count()
-    if current_active >= MAX_ACTIVE_POSITIONS:
-        log.info(f"Límite de {MAX_ACTIVE_POSITIONS} posiciones activas alcanzado (open + pending LIMIT). No se abre {sym}. Activas: {current_active}")
-        return
-
-    # --- Evitar modificar una posición existente ---
-    # La lógica actual no modifica la cantidad de una posición ya abierta.
-    # Simplemente abre una nueva si no existe para este símbolo.
-    if has_open_position(sym):
-        log.info(f"[{sym}] ya hay posición abierta; se omite nueva entrada.")
+    # --- Validaciones centrales de capacidad / duplicados ---
+    if not _can_open_new_position(sym):
         return
 
     px = Decimal(str(last_price(sym)))
@@ -255,7 +264,7 @@ def enter_basic(symbol: str, direction: str, use_limit: bool = True, limit_offse
 
 def stop_market(symbol: str, side: str, stop_price: float, qty: Optional[str] = None, close_position: bool = False):
     """Crear orden stop market"""
-    cli = get_client().client
+    cli = get_client()
     params = {
         "symbol": symbol,
         "side": side,
@@ -280,7 +289,7 @@ def stop_market(symbol: str, side: str, stop_price: float, qty: Optional[str] = 
 
 def take_profit_market(symbol: str, side: str, stop_price: float, qty: Optional[str] = None, close_position: bool = False):
     """Crear orden take profit market"""
-    cli = get_client().client
+    cli = get_client()
     params = {
         "symbol": symbol,
         "side": side,

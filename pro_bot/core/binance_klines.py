@@ -38,7 +38,7 @@ def fetch_klines(symbol: str, interval: str, *, limit: int|None=None,
     - Si limit es None y hay start/end: pagina hacia adelante desde start hasta end.
     - Si no hay limit/start/end: devuelve los últimos 1000 (compat).
     """
-    cli = get_client().client
+    cli = get_client()
 
     # Caso 1: limit especificado
     if limit is not None:

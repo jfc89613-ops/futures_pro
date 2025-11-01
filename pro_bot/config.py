@@ -13,7 +13,7 @@ class Settings(BaseModel):
     max_position_usdt: float = float(os.getenv("MAX_POSITION_USDT", 50))
     risk_per_trade: float = float(os.getenv("RISK_PER_TRADE", 0.01))
     max_margin_usdt: float = float(os.getenv("MAX_MARGIN_USDT", 0.5))
-    max_open_positions: int = int(os.getenv("MAX_OPEN_POSITIONS", 6))
+    max_open_positions: int = int(os.getenv("MAX_OPEN_POSITIONS", 20))
     auto_leverage: bool = os.getenv("AUTO_LEVERAGE", "true").lower() == "true"
     kline_interval: str = os.getenv("KLINE_INTERVAL", "1m")
     recv_window: int = int(os.getenv("RECV_WINDOW", 5000))
@@ -21,4 +21,5 @@ class Settings(BaseModel):
     warmup_lookback_min: int = int(os.getenv("WARMUP_LOOKBACK_MIN", 2000))
     train_interval: str = os.getenv("TRAIN_INTERVAL", "1m")
     train_lookback_days: int = int(os.getenv("TRAIN_LOOKBACK_DAYS", 30))
+    rest_min_interval_ms: int = int(os.getenv("REST_MIN_INTERVAL_MS", 180))
 settings = Settings()

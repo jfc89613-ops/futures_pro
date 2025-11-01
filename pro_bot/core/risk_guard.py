@@ -19,7 +19,7 @@ def _ensure_dirs():
 
 def _get_equity_usdt():
     # Futures account wallet balance (USDT-M)
-    acct = get_client().client.futures_account()
+    acct = get_client().account()
     # Prefer totalWalletBalance in USDT
     eq = float(acct.get("totalWalletBalance", 0.0))
     return eq

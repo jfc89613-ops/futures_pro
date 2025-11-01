@@ -6,8 +6,8 @@ from .client import get_client
 log = logging.getLogger("universe")
 
 def fetch_top_usdt_perpetuals_by_volume(max_symbols: int = 320) -> List[str]:
-    cli = get_client().client
-    info = cli.futures_exchange_info()
+    cli = get_client()
+    info = cli.exchange_info()
     usdt_perp = set()
     for s in info["symbols"]:
         try:

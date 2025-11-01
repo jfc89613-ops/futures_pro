@@ -17,7 +17,7 @@ def ensure_ws_started():
         return _TWM
 
     # Inicializa credenciales/cliente (sincroniza hora, modos, etc.)
-    cli = get_client().client
+    get_client()
 
     twm = ThreadedWebsocketManager(
         api_key=settings.api_key,
@@ -60,7 +60,7 @@ def start_streams(symbol: str, on_kline, on_user=None):
     if on_user is not None:
         try:
             # listen key para user stream de futuros
-            cli = get_client().client
+            cli = get_client()
             listen_key = cli.futures_stream_get_listen_key()["listenKey"]
             for method_name in ("start_futures_user_socket", "start_user_socket"):
                 if hasattr(twm, method_name):
