@@ -1,0 +1,41 @@
+import logging
+from typing import Callable, Optional, List
+from binance import ThreadedWebsocketManager
+from ..config import settings
+
+log = logging.getLogger("ws")
+
+_TWM: Optional[ThreadedWebsocketManager] = None
+
+def start_manager():
+    global _TWM
+    if _TWM is not None:
+        return _TWM
+    _TWM = ThreadedWebsocketManager(
+        api_key=settings.api_key,
+        api_secret=settings.api_secret,
+        testnet=settings.testnet,
+    )
+    _TWM.start()
+    log.info("WS manager started")
+    return _TWM
+
+def add_multiplex_kline(symbols: List[str], interval: str, on_msg: Callable):
+    """
+    Crea UN solo socket multiplex con streams tipo '<symbol>@kline_<interval>' (lowercase).
+    """
+    twm = start_manager()
+    streams = [f"{s.lower()}@kline_{interval}" for s in symbols]
+    # método es start_multiplex_socket(streams, callback)
+    if hasattr(twm, "start_multiplex_socket"):
+        twm.start_multiplex_socket(callback=on_msg, streams=streams)
+        log.info(f"WS multiplex added ({len(streams)} streams) interval={interval}")
+    else:
+        raise RuntimeError("python-binance no soporta start_multiplex_socket en esta versión.")
+
+def stop_manager():
+    global _TWM
+    if _TWM is not None:
+        _TWM.stop()
+        _TWM = None
+        log.info("WS manager stopped")

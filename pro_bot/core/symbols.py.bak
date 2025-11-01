@@ -1,0 +1,50 @@
+
+import logging
+from typing import List, Dict, Any
+from .client import get_client
+
+log = logging.getLogger("symbols")
+
+def _fapi_ticker_24hr_raw():
+    cli = get_client().client
+    # Try official method first; fallback to raw endpoint
+    for name in ("futures_ticker_24hr", "futures_ticker"):
+        if hasattr(cli, name):
+            try:
+                data = getattr(cli, name)()
+                if isinstance(data, list) and data:
+                    return data
+            except Exception as e:
+                log.info(f"{name} failed: {e}")
+    # Fallback to low-level request
+    try:
+        return cli._request_futures_api('get', 'ticker/24hr')
+    except Exception as e:
+        log.error(f"Fallback 24hr request failed: {e}")
+        return []
+
+def _usdt_perpetual_symbols() -> Dict[str, Any]:
+    info = get_client().client.futures_exchange_info()
+    out = {}
+    for sym in info.get("symbols", []):
+        try:
+            if sym.get("contractType") == "PERPETUAL" and sym.get("quoteAsset") == "USDT" and sym.get("status") == "TRADING":
+                out[sym["symbol"]] = sym
+        except Exception:
+            continue
+    return out
+
+def top_usdtm_symbols_by_quote_volume(n: int = 20) -> List[str]:
+    perps = _usdt_perpetual_symbols()
+    raw = _fapi_ticker_24hr_raw()
+    rows = []
+    for r in raw:
+        sym = r.get("symbol")
+        if sym in perps:
+            try:
+                qv = float(r.get("quoteVolume", 0.0))
+            except Exception:
+                qv = 0.0
+            rows.append((sym, qv))
+    rows.sort(key=lambda x: x[1], reverse=True)
+    return [s for s, _ in rows[:n]]
