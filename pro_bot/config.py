@@ -12,7 +12,7 @@ class Settings(BaseModel):
     position_mode: str = os.getenv("POSITION_MODE", "ONE_WAY")
     max_position_usdt: float = float(os.getenv("MAX_POSITION_USDT", 50))
     risk_per_trade: float = float(os.getenv("RISK_PER_TRADE", 0.01))
-    max_margin_usdt: float = float(os.getenv("MAX_MARGIN_USDT", 0.5))
+    max_margin_usdt: float = float(os.getenv("MAX_MARGIN_USDT", 10.0))
     max_open_positions: int = int(os.getenv("MAX_OPEN_POSITIONS", 6))
     auto_leverage: bool = os.getenv("AUTO_LEVERAGE", "true").lower() == "true"
     kline_interval: str = os.getenv("KLINE_INTERVAL", "1m")
